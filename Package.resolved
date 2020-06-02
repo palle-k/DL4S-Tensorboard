@@ -18,6 +18,15 @@
           "revision": "7f36441e3372665b1b414f8ac93b5905cc42a405",
           "version": "1.9.0"
         }
+      },
+      {
+        "package": "SwiftGD",
+        "repositoryURL": "https://github.com/twostraws/SwiftGD",
+        "state": {
+          "branch": null,
+          "revision": "1960998971b453101e740f25bc6d9fb01e0ba225",
+          "version": "2.5.0"
+        }
       }
     ]
   },
