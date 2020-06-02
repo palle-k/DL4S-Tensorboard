@@ -175,10 +175,17 @@ public class TensorboardWriter {
             $0.dtype = .dtString
             $0.stringVal = [text.data(using: .utf8) ?? Data()]
         }
+        let pluginData = Tensorflow_SummaryMetadata.PluginData.with {
+            $0.pluginName = "text"
+        }
+        let meta = Tensorflow_SummaryMetadata.with {
+            $0.pluginData = [pluginData]
+        }
         
         var value = Tensorflow_Summary.Value()
         value.tensor = tensor
         value.tag = cleanTag(tag)
+        value.metadata = meta
         
         try write(value: value, atStep: step)
     }
