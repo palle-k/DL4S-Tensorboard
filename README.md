@@ -32,7 +32,7 @@ try writer.write(scalar: 101, withTag: "model/accuracy", atStep: 1337)
 
 #### Advanced Usage
 
-```
+```swift
 // writing an image
 try writer.write(image: imageTensor, withTag: "generator/output", atStep: 42)
 
