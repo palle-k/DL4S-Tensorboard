@@ -54,8 +54,6 @@ public class TensorboardWriter {
     }
     
     private func write(event: Tensorflow_Event) throws {
-        print(event)
-        
         try handle.seekToEnd()
         let eventData = try event.serializedData()
         let size = UInt64(eventData.count)
