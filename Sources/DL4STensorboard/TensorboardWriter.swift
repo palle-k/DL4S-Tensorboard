@@ -137,7 +137,7 @@ public class TensorboardWriter {
     ///   - tag: Tag for the tensor
     ///   - step: Current epoch/step/training iteration
     /// - Throws: An error if the writer was unable to write to disk
-    public func write<Element: TensorFlowProtoScalar, Device>(tensor: Tensor<Element, Device>, withTag tag: String, atStep step: Int) throws {
+    func write<Element: TensorFlowProtoScalar, Device>(tensor: Tensor<Element, Device>, withTag tag: String, atStep step: Int) throws {
         let tensorShape = Tensorflow_TensorShapeProto.with { tensorShape in
             tensorShape.dim = tensor.shape.map { v in
                 Tensorflow_TensorShapeProto.Dim.with { dim in

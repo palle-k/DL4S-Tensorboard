@@ -15,7 +15,7 @@ Then add `DL4STensorboard` as a target dependency:
 
 ### Usage
 
-DL4S-Tensorboard supports Scalars, Images, Tensors, Text, Embeddings and Histograms.
+DL4S-Tensorboard supports Scalars, Images, Text, Embeddings and Histograms.
 
 #### Writing scalars
 
