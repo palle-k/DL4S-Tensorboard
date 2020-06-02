@@ -1,6 +1,7 @@
 # DL4S-Tensorboard
 
-A summary writer for [DL4S](https://github.com/palle-k/DL4S) that writes Tensorboard log files.
+A Swift-native summary writer for [DL4S](https://github.com/palle-k/DL4S) that writes Tensorboard log files.
+
 
 ### Installation
 
