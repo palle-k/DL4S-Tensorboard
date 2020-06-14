@@ -23,7 +23,6 @@
 //  SOFTWARE.
 
 import Foundation
-import DL4S
 
 
 public struct Histogram {

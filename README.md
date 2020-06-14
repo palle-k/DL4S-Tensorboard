@@ -7,11 +7,12 @@ A Swift-native summary writer for [DL4S](https://github.com/palle-k/DL4S) that w
 
 Add DL4S-Tensorboard as a package dependency in `Package.swift`.
 
-    .package(url: "https://github.com/palle-k/DL4S-Tensorboard.git", .branch("master")),
+    .package(url: "https://github.com/palle-k/DL4S.git", .branch("master")),
+    .package(url: "https://github.com/palle-k/DL4S-Tensorboard.git", .branch("master"))
 
 Then add `DL4STensorboard` as a target dependency:
 
-    .target(name: "YourAwesomeTarget", dependencies: ["DL4STensorboard"]),
+    .target(name: "YourAwesomeTarget", dependencies: ["DL4S", "DL4STensorboard"]),
 
 ### Usage
 

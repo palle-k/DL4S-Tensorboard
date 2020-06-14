@@ -22,7 +22,6 @@
 //  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 //  SOFTWARE.
 
-import DL4S
 import Foundation
 import SwiftGD
 import SwiftProtobuf
@@ -105,6 +104,111 @@ public class TensorboardWriter {
         try write(value: value, atStep: step)
     }
     
+    /// Writes text to tensorboard
+    /// - Parameters:
+    ///   - text: Text data that will be written to TensorBoard
+    ///   - tag: Tag for the text
+    ///   - step: Current epoch/step/training iteration
+    /// - Throws: An error if the writer was unable to write to disk
+    public func write(text: String, withTag tag: String, atStep step: Int) throws {
+        let tensorShape = Tensorflow_TensorShapeProto.with {
+            $0.dim = [Tensorflow_TensorShapeProto.Dim.with {$0.size = 1}]
+        }
+        let tensor = Tensorflow_TensorProto.with {
+            $0.tensorShape = tensorShape
+            $0.dtype = .dtString
+            $0.stringVal = [text.data(using: .utf8) ?? Data()]
+        }
+        let pluginData = Tensorflow_SummaryMetadata.PluginData.with {
+            $0.pluginName = "text"
+        }
+        let meta = Tensorflow_SummaryMetadata.with {
+            $0.pluginData = [pluginData]
+        }
+        
+        var value = Tensorflow_Summary.Value()
+        value.tensor = tensor
+        value.tag = cleanTag(tag)
+        value.metadata = meta
+        
+        try write(value: value, atStep: step)
+    }
+    
+    /// Writes a histogram to tensorboard
+    /// - Parameters:
+    ///   - histogram: Histogram data
+    ///   - tag: Tag for the histogram
+    ///   - step: Current epoch/step/training iteration
+    /// - Throws: An error if the writer was unable to write to disk
+    public func write(histogram: Histogram, withTag tag: String, atStep step: Int) throws {
+        let histogramProto = Tensorflow_HistogramProto.with {
+            $0.bucket = histogram.buckets
+            $0.bucketLimit = Array(histogram.edges.dropFirst())
+            $0.min = histogram.min
+            $0.max = histogram.max
+            $0.sum = histogram.sum
+            $0.sumSquares = zip(histogram.buckets, histogram.buckets).map(*).reduce(0, +)
+            $0.num = histogram.sum
+        }
+        
+        let value = Tensorflow_Summary.Value.with {
+            $0.histo = histogramProto
+            $0.tag = cleanTag(tag)
+        }
+        
+        try write(value: value, atStep: step)
+    }
+}
+
+#if canImport(DL4S)
+import DL4S
+
+public extension TensorboardWriter {
+    
+    /// Writes an embedding matrix to tensorboard
+    /// - Parameters:
+    ///   - embedding: Tensor with shape [items, embedDim]
+    ///   - labels: Labels corresponding to rows in the embedding matrix
+    ///   - tag: Tag for the image
+    ///   - step: Current epoch/step/training iteration
+    /// - Throws: An error if the writer was unable to write to disk
+    public func write<Element, Device>(embedding: Tensor<Element, Device>, withLabels labels: [String], atStep step: Int) throws {
+        precondition(embedding.dim == 2, "Embedding must be 2-dimensional tensor")
+        precondition(embedding.shape[0] == labels.count, "Number of labels must be equal to number of rows in embedding tensor.")
+        
+        let paddedGlobalStep = String(format: "%05d", step)
+        
+        let embeddingDir = runDirectory.appendingPathComponent(paddedGlobalStep)
+        try FileManager.default.createDirectory(at: embeddingDir, withIntermediateDirectories: true, attributes: nil)
+        
+        try labels.joined(separator: "\n")
+            .write(to: embeddingDir.appendingPathComponent("metadata.tsv"), atomically: true, encoding: .utf8)
+        
+        let tensorsWriter = try TSVWriter(target: embeddingDir.appendingPathComponent("tensors.tsv"))
+        for rowIndex in 0 ..< embedding.shape[0] {
+            let row = embedding[rowIndex]
+            try tensorsWriter.writeRow(entries: row.elements)
+        }
+        try tensorsWriter.close()
+        
+        let projectorConfigURL = runDirectory.appendingPathComponent("projector_config.pbtxt")
+        if !FileManager.default.fileExists(atPath: projectorConfigURL.path) {
+            FileManager.default.createFile(atPath: projectorConfigURL.path, contents: nil, attributes: nil)
+        }
+        let projectorConfigFile = try FileHandle(forUpdating: projectorConfigURL)
+        projectorConfigFile.seekToEndOfFile()
+        projectorConfigFile.write("""
+        embeddings {
+        tensor_name: "default:\(paddedGlobalStep)"
+        tensor_path: "\(paddedGlobalStep)/tensors.tsv"
+        metadata_path: "\(paddedGlobalStep)/metadata.tsv"
+        }
+        
+        """) // do not remove last newline from the string.
+        try projectorConfigFile.synchronize()
+        try projectorConfigFile.close()
+    }
+    
     /// Writes an image to tensorboard
     /// - Parameters:
     ///   - image: Tensor containing the image data, either [channels, height, width] or [height, width], with the number of supported channels being either 1 (grayscale), 3 (rgb) or 4 (rgba).
@@ -160,102 +264,6 @@ public class TensorboardWriter {
         try write(value: value, atStep: step)
     }
     
-    /// Writes text to tensorboard
-    /// - Parameters:
-    ///   - text: Text data that will be written to TensorBoard
-    ///   - tag: Tag for the text
-    ///   - step: Current epoch/step/training iteration
-    /// - Throws: An error if the writer was unable to write to disk
-    public func write(text: String, withTag tag: String, atStep step: Int) throws {
-        let tensorShape = Tensorflow_TensorShapeProto.with {
-            $0.dim = [Tensorflow_TensorShapeProto.Dim.with {$0.size = 1}]
-        }
-        let tensor = Tensorflow_TensorProto.with {
-            $0.tensorShape = tensorShape
-            $0.dtype = .dtString
-            $0.stringVal = [text.data(using: .utf8) ?? Data()]
-        }
-        let pluginData = Tensorflow_SummaryMetadata.PluginData.with {
-            $0.pluginName = "text"
-        }
-        let meta = Tensorflow_SummaryMetadata.with {
-            $0.pluginData = [pluginData]
-        }
-        
-        var value = Tensorflow_Summary.Value()
-        value.tensor = tensor
-        value.tag = cleanTag(tag)
-        value.metadata = meta
-        
-        try write(value: value, atStep: step)
-    }
-    
-    /// Writes a histogram to tensorboard
-    /// - Parameters:
-    ///   - histogram: Histogram data
-    ///   - tag: Tag for the histogram
-    ///   - step: Current epoch/step/training iteration
-    /// - Throws: An error if the writer was unable to write to disk
-    public func write(histogram: Histogram, withTag tag: String, atStep step: Int) throws {
-        let histogramProto = Tensorflow_HistogramProto.with {
-            $0.bucket = histogram.buckets
-            $0.bucketLimit = Array(histogram.edges.dropFirst())
-            $0.min = histogram.min
-            $0.max = histogram.max
-            $0.sum = histogram.sum
-            $0.sumSquares = zip(histogram.buckets, histogram.buckets).map(*).reduce(0, +)
-            $0.num = histogram.sum
-        }
-        
-        let value = Tensorflow_Summary.Value.with {
-            $0.histo = histogramProto
-            $0.tag = cleanTag(tag)
-        }
-        
-        try write(value: value, atStep: step)
-    }
-    
-    /// Writes an embedding matrix to tensorboard
-    /// - Parameters:
-    ///   - embedding: Tensor with shape [items, embedDim]
-    ///   - labels: Labels corresponding to rows in the embedding matrix
-    ///   - tag: Tag for the image
-    ///   - step: Current epoch/step/training iteration
-    /// - Throws: An error if the writer was unable to write to disk
-    public func write<Element, Device>(embedding: Tensor<Element, Device>, withLabels labels: [String], atStep step: Int) throws {
-        precondition(embedding.dim == 2, "Embedding must be 2-dimensional tensor")
-        precondition(embedding.shape[0] == labels.count, "Number of labels must be equal to number of rows in embedding tensor.")
-        
-        let paddedGlobalStep = String(format: "%05d", step)
-        
-        let embeddingDir = runDirectory.appendingPathComponent(paddedGlobalStep)
-        try FileManager.default.createDirectory(at: embeddingDir, withIntermediateDirectories: true, attributes: nil)
-        
-        try labels.joined(separator: "\n")
-            .write(to: embeddingDir.appendingPathComponent("metadata.tsv"), atomically: true, encoding: .utf8)
-        
-        let tensorsWriter = try TSVWriter(target: embeddingDir.appendingPathComponent("tensors.tsv"))
-        for rowIndex in 0 ..< embedding.shape[0] {
-            let row = embedding[rowIndex]
-            try tensorsWriter.writeRow(entries: row.elements)
-        }
-        try tensorsWriter.close()
-        
-        let projectorConfigURL = runDirectory.appendingPathComponent("projector_config.pbtxt")
-        if !FileManager.default.fileExists(atPath: projectorConfigURL.path) {
-            FileManager.default.createFile(atPath: projectorConfigURL.path, contents: nil, attributes: nil)
-        }
-        let projectorConfigFile = try FileHandle(forUpdating: projectorConfigURL)
-        projectorConfigFile.seekToEndOfFile()
-        projectorConfigFile.write("""
-        embeddings {
-        tensor_name: "default:\(paddedGlobalStep)"
-        tensor_path: "\(paddedGlobalStep)/tensors.tsv"
-        metadata_path: "\(paddedGlobalStep)/metadata.tsv"
-        }
-        
-        """) // do not remove last newline from the string.
-        try projectorConfigFile.synchronize()
-        try projectorConfigFile.close()
-    }
 }
+
+#endif

@@ -7,13 +7,12 @@
 
 import Foundation
 import XCTest
-import DL4S
 @testable import DL4STensorboard
 
 class HistogramTests: XCTestCase {
     func testHistogramCreation() {
-        let t = Tensor<Float, CPU>(normalDistributedWithShape: 100)
-        let histogram = Histogram(values: t.elements.map(Double.init), buckets: 20)
+        let elements = (0 ..< 100).map {_ in Float.random(in: 0 ... 1)}
+        let histogram = Histogram(values: elements.map(Double.init), buckets: 20)
         print(histogram)
     }
 }

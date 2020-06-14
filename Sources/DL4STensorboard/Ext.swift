@@ -22,7 +22,6 @@
 //  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 //  SOFTWARE.
 
-import DL4S
 import Foundation
 import SwiftGD
 
@@ -37,6 +36,15 @@ func cleanTag(_ tag: String) -> String {
         .drop(while: {$0 == "/"})
         .replacingOccurrences(of: #"[^-/\w\.]"#, with: "_", options: .regularExpression)
 }
+
+extension FileHandle {
+    func write(_ string: String) {
+        self.write(string.data(using: .utf8)!)
+    }
+}
+
+#if canImport(DL4S)
+import DL4S
 
 extension Image {
     convenience init?<E: NumericType, D: DeviceType>(_ tensor: Tensor<E, D>) {
@@ -123,3 +131,4 @@ extension Int32: TensorFlowProtoScalar {
         tensorProto.tensor.intVal = tensor.elements
     }
 }
+#endif
