@@ -2,6 +2,15 @@
   "object": {
     "pins": [
       {
+        "package": "DL4S",
+        "repositoryURL": "https://github.com/palle-k/DL4S.git",
+        "state": {
+          "branch": "master",
+          "revision": "4a96d91aee75ddf00c586d9094efb2f58b1b9ed3",
+          "version": null
+        }
+      },
+      {
         "package": "SwiftProtobuf",
         "repositoryURL": "https://github.com/apple/swift-protobuf.git",
         "state": {
