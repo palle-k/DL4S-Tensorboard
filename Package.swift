@@ -5,10 +5,7 @@ import PackageDescription
 let package = Package(
     name: "DL4STensorboard",
     platforms: [
-        .iOS(.v13),
-        .macOS(.v10_15),
-        .watchOS(.v6),
-        .tvOS(.v13)
+        .macOS(.v10_15)
     ],
     products: [
         .library(name: "DL4STensorboard", targets: ["DL4STensorboard"]),

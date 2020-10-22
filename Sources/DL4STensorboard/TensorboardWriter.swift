@@ -31,14 +31,14 @@ import SwiftProtobuf
 public class TensorboardWriter {
     private let runDirectory: URL
     private let handle: FileHandle
-    
+
     /// Creates a summary writer that writes TensorBoard compatible log files
     /// - Parameters:
     ///   - logDirectory: Directory to write log files into
     ///   - runName: Name of the current run. If specified, a subdirectory with the run name will be used.
     /// - Throws: An error if the events file could not be created
     public init(logDirectory: URL, runName: String?) throws {
-        let logfileName = "events.out.tfevents.\(Int(Date().timeIntervalSince1970)).\(Host.current().name ?? "localhost")"
+        let logfileName = "events.out.tfevents.\(Int(Date().timeIntervalSince1970)).\(ProcessInfo.processInfo.hostName)"
         if let runName = runName {
             runDirectory = logDirectory.appendingPathComponent(runName, isDirectory: true)
         } else {
@@ -59,7 +59,11 @@ public class TensorboardWriter {
     }
     
     private func write(event: Tensorflow_Event) throws {
-        try handle.seekToEnd()
+        if #available(OSX 10.15.4, iOS 13.4, watchOS 6.2, tvOS 13.4, *) {
+            try self.handle.seekToEnd()
+        } else {
+            self.handle.seekToEndOfFile()
+        }
         let eventData = try event.serializedData()
         let size = UInt64(eventData.count)
         let header = Data(integer: size)

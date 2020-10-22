@@ -43,7 +43,11 @@ class TSVWriter {
     }
     
     func writeRow(entries: [Any]) throws {
-        try self.handle.seekToEnd()
+        if #available(OSX 10.15.4, iOS 13.4, watchOS 6.2, tvOS 13.4, *) {
+            try self.handle.seekToEnd()
+        } else {
+            self.handle.seekToEndOfFile()
+        }
         handle.write(entries.map{"\($0)"}.joined(separator: "\t") + "\n")
     }
     
