@@ -176,7 +176,7 @@ public extension TensorboardWriter {
     ///   - tag: Tag for the image
     ///   - step: Current epoch/step/training iteration
     /// - Throws: An error if the writer was unable to write to disk
-    public func write<Element, Device>(embedding: Tensor<Element, Device>, withLabels labels: [String], atStep step: Int) throws {
+    func write<Element, Device>(embedding: Tensor<Element, Device>, withLabels labels: [String], atStep step: Int) throws {
         precondition(embedding.dim == 2, "Embedding must be 2-dimensional tensor")
         precondition(embedding.shape[0] == labels.count, "Number of labels must be equal to number of rows in embedding tensor.")
         
@@ -219,7 +219,7 @@ public extension TensorboardWriter {
     ///   - tag: Tag for the image
     ///   - step: Current epoch/step/training iteration
     /// - Throws: An error if the writer was unable to write to disk
-    public func write<Element, Device>(image: Tensor<Element, Device>, withTag tag: String, atStep step: Int) throws {
+    func write<Element, Device>(image: Tensor<Element, Device>, withTag tag: String, atStep step: Int) throws {
         guard let gdImage = Image(image) else {
             print("Could not create image from tensor.")
             return
