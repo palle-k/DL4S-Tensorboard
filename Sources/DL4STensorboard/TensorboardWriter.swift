@@ -25,125 +25,134 @@
 import Foundation
 import SwiftGD
 import SwiftProtobuf
+import Synchronization
 
+/// An error that the summary writer reports.
+// SwiftGD declares its own `Error` type, so the protocol needs the module prefix.
+public enum TensorboardWriterError: Swift.Error, Sendable {
+    /// The tensor cannot be converted to an image.
+    ///
+    /// Supported shapes are `[height, width]`, `[1, height, width]`, `[3, height, width]`, and `[4, height, width]`.
+    case unsupportedImageShape([Int])
+}
 
-/// A summary writer that writes TensorBoard compatible log files
-public class TensorboardWriter {
-    private let runDirectory: URL
-    private let handle: FileHandle
+/// A summary writer that writes TensorBoard compatible log files.
+///
+/// The writer appends every record to one events file. The file handle is protected by a lock,
+/// so one writer can be shared between threads and tasks.
+public final class TensorboardWriter: Sendable {
+    let runDirectory: URL
+    private let handle: Mutex<FileHandle>
 
-    /// Creates a summary writer that writes TensorBoard compatible log files
+    /// Creates a summary writer that writes TensorBoard compatible log files.
     /// - Parameters:
-    ///   - logDirectory: Directory to write log files into
-    ///   - runName: Name of the current run. If specified, a subdirectory with the run name will be used.
-    /// - Throws: An error if the events file could not be created
+    ///   - logDirectory: Directory to write log files into.
+    ///   - runName: Name of the current run. If specified, a subdirectory with the run name is used.
+    /// - Throws: An error if the events file cannot be created.
     public init(logDirectory: URL, runName: String?) throws {
         let logfileName = "events.out.tfevents.\(Int(Date().timeIntervalSince1970)).\(ProcessInfo.processInfo.hostName)"
-        if let runName = runName {
+        if let runName {
             runDirectory = logDirectory.appendingPathComponent(runName, isDirectory: true)
         } else {
             runDirectory = logDirectory
         }
         let fileURL = runDirectory.appendingPathComponent(logfileName)
-        
+
         if !FileManager.default.fileExists(atPath: runDirectory.path) {
             try FileManager.default.createDirectory(atPath: runDirectory.path, withIntermediateDirectories: true, attributes: nil)
         }
         if !FileManager.default.fileExists(atPath: fileURL.path) {
             FileManager.default.createFile(atPath: fileURL.path, contents: nil, attributes: nil)
         }
-        
-        handle = try FileHandle(forUpdating: fileURL)
-        
+
+        handle = Mutex(try FileHandle(forUpdating: fileURL))
+
         try writeInitEvent()
     }
-    
-    private func write(event: Tensorflow_Event) throws {
-        if #available(OSX 10.15.4, iOS 13.4, watchOS 6.2, tvOS 13.4, *) {
-            try self.handle.seekToEnd()
-        } else {
-            self.handle.seekToEndOfFile()
-        }
+
+    /// Appends one record in the TFRecord format: a little-endian length, its masked CRC, the payload, and the CRC of the payload.
+    func write(event: Tensorflow_Event) throws {
         let eventData = try event.serializedData()
-        let size = UInt64(eventData.count)
-        let header = Data(integer: size)
-        
-        handle.write(header)
-        handle.write(Data(integer: masked_crc32c(header)))
-        
-        handle.write(eventData)
-        handle.write(Data(integer: masked_crc32c(eventData)))
-        try handle.synchronize()
+        let header = Data(integer: UInt64(eventData.count))
+
+        try handle.withLock { handle in
+            try handle.seekToEnd()
+            try handle.write(contentsOf: header)
+            try handle.write(contentsOf: Data(integer: masked_crc32c(header)))
+            try handle.write(contentsOf: eventData)
+            try handle.write(contentsOf: Data(integer: masked_crc32c(eventData)))
+            try handle.synchronize()
+        }
     }
-    
-    private func write(value: Tensorflow_Summary.Value, atStep step: Int) throws {
+
+    func write(value: Tensorflow_Summary.Value, atStep step: Int) throws {
         var summary = Tensorflow_Summary()
         summary.value = [value]
-        
+
         var event = Tensorflow_Event()
         event.step = Int64(step)
         event.wallTime = Date().timeIntervalSince1970
         event.what = .summary(summary)
-        
+
         try write(event: event)
     }
-    
+
     private func writeInitEvent() throws {
         var event = Tensorflow_Event()
         event.wallTime = Date().timeIntervalSince1970
         try write(event: event)
     }
-    
-    /// Writes a single scalar to tensorboard.
+
+    /// Writes a single scalar to TensorBoard.
     /// - Parameters:
-    ///   - scalar: Scalar to write
-    ///   - tag: Tag for the scalar
-    ///   - step: Current epoch/step/training iteration
-    /// - Throws: An error if the writer was unable to write to disk
+    ///   - scalar: Scalar to write.
+    ///   - tag: Tag for the scalar.
+    ///   - step: Current epoch, step, or training iteration.
+    /// - Throws: An error if the writer cannot write to disk.
     public func write(scalar: Float, withTag tag: String, atStep step: Int) throws {
         var value = Tensorflow_Summary.Value()
         value.simpleValue = scalar
         value.tag = cleanTag(tag)
-        
+
         try write(value: value, atStep: step)
     }
-    
-    /// Writes text to tensorboard
+
+    /// Writes text to TensorBoard.
     /// - Parameters:
-    ///   - text: Text data that will be written to TensorBoard
-    ///   - tag: Tag for the text
-    ///   - step: Current epoch/step/training iteration
-    /// - Throws: An error if the writer was unable to write to disk
+    ///   - text: Text to write.
+    ///   - tag: Tag for the text.
+    ///   - step: Current epoch, step, or training iteration.
+    /// - Throws: An error if the writer cannot write to disk.
     public func write(text: String, withTag tag: String, atStep step: Int) throws {
         let tensorShape = Tensorflow_TensorShapeProto.with {
-            $0.dim = [Tensorflow_TensorShapeProto.Dim.with {$0.size = 1}]
+            $0.dim = [Tensorflow_TensorShapeProto.Dim.with { $0.size = 1 }]
         }
         let tensor = Tensorflow_TensorProto.with {
             $0.tensorShape = tensorShape
             $0.dtype = .dtString
-            $0.stringVal = [text.data(using: .utf8) ?? Data()]
+            $0.stringVal = [Data(text.utf8)]
         }
         let pluginData = Tensorflow_SummaryMetadata.PluginData.with {
             $0.pluginName = "text"
         }
         let meta = Tensorflow_SummaryMetadata.with {
-            $0.pluginData = [pluginData]
+            $0.pluginData = pluginData
         }
-        
+
         var value = Tensorflow_Summary.Value()
         value.tensor = tensor
         value.tag = cleanTag(tag)
         value.metadata = meta
-        
+
         try write(value: value, atStep: step)
     }
-    
-    /// Writes a histogram to tensorboard
+
+    /// Writes a histogram to TensorBoard.
     /// - Parameters:
-    ///   - histogram: Histogram data
-    ///   - tag: Tag for the histogram
-    ///   - step: Current epoch/step/training iteration
-    /// - Throws: An error if the writer was unable to write to disk
+    ///   - histogram: Histogram data.
+    ///   - tag: Tag for the histogram.
+    ///   - step: Current epoch, step, or training iteration.
+    /// - Throws: An error if the writer cannot write to disk.
     public func write(histogram: Histogram, withTag tag: String, atStep step: Int) throws {
         let histogramProto = Tensorflow_HistogramProto.with {
             $0.bucket = histogram.buckets
@@ -154,12 +163,12 @@ public class TensorboardWriter {
             $0.sumSquares = zip(histogram.buckets, histogram.buckets).map(*).reduce(0, +)
             $0.num = histogram.sum
         }
-        
+
         let value = Tensorflow_Summary.Value.with {
             $0.histo = histogramProto
             $0.tag = cleanTag(tag)
         }
-        
+
         try write(value: value, atStep: step)
     }
 }
@@ -168,83 +177,81 @@ public class TensorboardWriter {
 import DL4S
 
 public extension TensorboardWriter {
-    
-    /// Writes an embedding matrix to tensorboard
+    /// Writes an embedding matrix to TensorBoard.
     /// - Parameters:
-    ///   - embedding: Tensor with shape [items, embedDim]
-    ///   - labels: Labels corresponding to rows in the embedding matrix
-    ///   - tag: Tag for the image
-    ///   - step: Current epoch/step/training iteration
-    /// - Throws: An error if the writer was unable to write to disk
+    ///   - embedding: Tensor with shape `[items, embedDim]`.
+    ///   - labels: Labels that correspond to the rows of the embedding matrix.
+    ///   - step: Current epoch, step, or training iteration.
+    /// - Throws: An error if the writer cannot write to disk.
     func write<Element, Device>(embedding: Tensor<Element, Device>, withLabels labels: [String], atStep step: Int) throws {
         precondition(embedding.dim == 2, "Embedding must be 2-dimensional tensor")
         precondition(embedding.shape[0] == labels.count, "Number of labels must be equal to number of rows in embedding tensor.")
-        
+
         let paddedGlobalStep = String(format: "%05d", step)
-        
+
         let embeddingDir = runDirectory.appendingPathComponent(paddedGlobalStep)
         try FileManager.default.createDirectory(at: embeddingDir, withIntermediateDirectories: true, attributes: nil)
-        
+
         try labels.joined(separator: "\n")
             .write(to: embeddingDir.appendingPathComponent("metadata.tsv"), atomically: true, encoding: .utf8)
-        
+
         let tensorsWriter = try TSVWriter(target: embeddingDir.appendingPathComponent("tensors.tsv"))
         for rowIndex in 0 ..< embedding.shape[0] {
             let row = embedding[rowIndex]
             try tensorsWriter.writeRow(entries: row.elements)
         }
         try tensorsWriter.close()
-        
+
         let projectorConfigURL = runDirectory.appendingPathComponent("projector_config.pbtxt")
         if !FileManager.default.fileExists(atPath: projectorConfigURL.path) {
             FileManager.default.createFile(atPath: projectorConfigURL.path, contents: nil, attributes: nil)
         }
         let projectorConfigFile = try FileHandle(forUpdating: projectorConfigURL)
-        projectorConfigFile.seekToEndOfFile()
-        projectorConfigFile.write("""
+        try projectorConfigFile.seekToEnd()
+        // The last newline separates this entry from the next one.
+        try projectorConfigFile.write("""
         embeddings {
         tensor_name: "default:\(paddedGlobalStep)"
         tensor_path: "\(paddedGlobalStep)/tensors.tsv"
         metadata_path: "\(paddedGlobalStep)/metadata.tsv"
         }
-        
-        """) // do not remove last newline from the string.
+
+        """)
         try projectorConfigFile.synchronize()
         try projectorConfigFile.close()
     }
-    
-    /// Writes an image to tensorboard
+
+    /// Writes an image to TensorBoard.
     /// - Parameters:
-    ///   - image: Tensor containing the image data, either [channels, height, width] or [height, width], with the number of supported channels being either 1 (grayscale), 3 (rgb) or 4 (rgba).
-    ///   - tag: Tag for the image
-    ///   - step: Current epoch/step/training iteration
-    /// - Throws: An error if the writer was unable to write to disk
+    ///   - image: Tensor that contains the image data, either `[channels, height, width]` or `[height, width]`. Supported channel counts are 1 (grayscale), 3 (RGB), and 4 (RGBA).
+    ///   - tag: Tag for the image.
+    ///   - step: Current epoch, step, or training iteration.
+    /// - Throws: ``TensorboardWriterError/unsupportedImageShape(_:)`` if the tensor has an unsupported shape, or an error if the writer cannot write to disk.
     func write<Element, Device>(image: Tensor<Element, Device>, withTag tag: String, atStep step: Int) throws {
         guard let gdImage = Image(image) else {
-            print("Could not create image from tensor.")
-            return
+            throw TensorboardWriterError.unsupportedImageShape(image.shape)
         }
         let pngData = try gdImage.export(as: .png)
-        
+
         var imageValue = Tensorflow_Summary.Image()
         imageValue.colorspace = 4
         imageValue.width = Int32(gdImage.size.width)
         imageValue.height = Int32(gdImage.size.height)
         imageValue.encodedImageString = pngData
-        
+
         var value = Tensorflow_Summary.Value()
         value.image = imageValue
         value.tag = cleanTag(tag)
-        
+
         try write(value: value, atStep: step)
     }
-    
-    /// Writes a tensor to tensorboard
+
+    /// Writes a tensor to TensorBoard.
     /// - Parameters:
-    ///   - tensor: Arbitrary tensor
-    ///   - tag: Tag for the tensor
-    ///   - step: Current epoch/step/training iteration
-    /// - Throws: An error if the writer was unable to write to disk
+    ///   - tensor: Tensor with any shape.
+    ///   - tag: Tag for the tensor.
+    ///   - step: Current epoch, step, or training iteration.
+    /// - Throws: An error if the writer cannot write to disk.
     func write<Element: TensorFlowProtoScalar, Device>(tensor: Tensor<Element, Device>, withTag tag: String, atStep step: Int) throws {
         let tensorShape = Tensorflow_TensorShapeProto.with { tensorShape in
             tensorShape.dim = tensor.shape.map { v in
@@ -260,14 +267,13 @@ public extension TensorboardWriter {
             Element.populate(tensorProto: &wrapper, with: tensor)
             tensorProto = wrapper.tensor
         }
-    
+
         var value = Tensorflow_Summary.Value()
         value.tensor = tensorProto
         value.tag = cleanTag(tag)
-    
+
         try write(value: value, atStep: step)
     }
-    
 }
 
 #endif

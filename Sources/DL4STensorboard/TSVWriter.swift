@@ -24,35 +24,31 @@
 
 import Foundation
 
-
-class TSVWriter {
+/// Writes tab-separated rows to a file.
+final class TSVWriter {
     let target: URL
-    let handle: FileHandle
-    
+    private let handle: FileHandle
+
     init(target: URL) throws {
         self.target = target
         if !FileManager.default.fileExists(atPath: target.path) {
             FileManager.default.createFile(atPath: target.path, contents: nil, attributes: nil)
         }
-        self.handle = try FileHandle(forWritingTo: target)
+        handle = try FileHandle(forWritingTo: target)
     }
-    
+
     func writeHeader(columns: [String]) throws {
-        try self.handle.seek(toOffset: 0)
-        handle.write(columns.joined(separator: "\t") + "\n")
+        try handle.seek(toOffset: 0)
+        try handle.write(columns.joined(separator: "\t") + "\n")
     }
-    
-    func writeRow(entries: [Any]) throws {
-        if #available(OSX 10.15.4, iOS 13.4, watchOS 6.2, tvOS 13.4, *) {
-            try self.handle.seekToEnd()
-        } else {
-            self.handle.seekToEndOfFile()
-        }
-        handle.write(entries.map{"\($0)"}.joined(separator: "\t") + "\n")
+
+    func writeRow<Entry>(entries: [Entry]) throws {
+        try handle.seekToEnd()
+        try handle.write(entries.map { "\($0)" }.joined(separator: "\t") + "\n")
     }
-    
+
     func close() throws {
-        try self.handle.synchronize()
-        try self.handle.close()
+        try handle.synchronize()
+        try handle.close()
     }
 }

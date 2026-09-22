@@ -1,9 +1,8 @@
 //
-//  DL4S_TensorboardTests.swift
+//  CRCTests.swift
 //
-//
-//  Created by Palle Klewitz on 02.06.20.
-//  Copyright (c) 2020 Palle Klewitz
+//  Created by Palle Klewitz on 21.09.26.
+//  Copyright (c) 2026 Palle Klewitz
 //
 //  Permission is hereby granted, free of charge, to any person obtaining a copy
 //  of this software and associated documentation files (the "Software"), to deal
@@ -23,17 +22,25 @@
 //  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 //  SOFTWARE.
 
-import XCTest
 import Foundation
+import Testing
 @testable import DL4STensorboard
 
-final class DL4S_TensorboardTests: XCTestCase {
-    func testWriter() throws {
-        let logdir = URL(fileURLWithPath: "./logs/")
-        let writer = try TensorboardWriter(logDirectory: logdir, runName: "testrun")
-        for i in 1 ... 100 {
-            try writer.write(scalar: log(Float(i)), withTag: "main/loss", atStep: i)
-        }
-        print("To test the result, run tensorboard --logdir=./logs")
+@Suite
+struct CRCTests {
+    /// The CRC-32C check value from the RFC 3720 test vectors.
+    @Test
+    func matchesCRC32CTestVectors() {
+        #expect(crc32(Data()) == 0)
+        #expect(crc32(Data(repeating: 0, count: 32)) == 0x8A91_36AA)
+        #expect(crc32(Data(repeating: 0xFF, count: 32)) == 0x62A8_AB43)
+        #expect(crc32(Data("123456789".utf8)) == 0xE306_9283)
+    }
+
+    @Test
+    func masksTheCRC() {
+        let data = Data("123456789".utf8)
+        let crc = crc32(data)
+        #expect(masked_crc32c(data) == ((crc >> 15) | (crc << 17)) &+ 0xA282_EAD8)
     }
 }

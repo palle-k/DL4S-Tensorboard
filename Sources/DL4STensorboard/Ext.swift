@@ -26,20 +26,23 @@ import Foundation
 import SwiftGD
 
 extension Data {
-    init<Integer: BinaryInteger>(integer: Integer) {
-        self = Data(bytes: [integer], count: MemoryLayout<Integer>.size)
+    /// The bytes of the integer in little-endian order, which the TFRecord format requires.
+    init<Integer: FixedWidthInteger>(integer: Integer) {
+        var value = integer.littleEndian
+        self = Swift.withUnsafeBytes(of: &value) { Data($0) }
     }
 }
 
+/// Removes leading slashes and replaces characters that TensorBoard does not accept in tags.
 func cleanTag(_ tag: String) -> String {
-    return tag
-        .drop(while: {$0 == "/"})
+    tag
+        .drop(while: { $0 == "/" })
         .replacingOccurrences(of: #"[^-/\w\.]"#, with: "_", options: .regularExpression)
 }
 
 extension FileHandle {
-    func write(_ string: String) {
-        self.write(string.data(using: .utf8)!)
+    func write(_ string: String) throws {
+        try write(contentsOf: Data(string.utf8))
     }
 }
 
@@ -47,8 +50,13 @@ extension FileHandle {
 import DL4S
 
 extension Image {
+    /// Creates an image from a tensor with shape `[height, width]` or `[channels, height, width]`.
+    ///
+    /// Returns `nil` if the shape is not supported or the image cannot be allocated.
     convenience init?<E: NumericType, D: DeviceType>(_ tensor: Tensor<E, D>) {
-        precondition(2 ... 3 ~= tensor.dim, "Tensor must have 2 or 3 dimensions.")
+        guard 2 ... 3 ~= tensor.dim else {
+            return nil
+        }
         let t: Tensor<E, D>
         if tensor.dim == 3 {
             t = tensor.detached()
@@ -57,6 +65,9 @@ extension Image {
         }
 
         let (width, height) = (t.shape[2], t.shape[1])
+        guard [1, 3, 4].contains(t.shape[0]) else {
+            return nil
+        }
         self.init(width: width, height: height)
 
         for y in 0 ..< height {
@@ -70,7 +81,7 @@ extension Image {
                 } else if slice.count == 4 {
                     color = Color(red: slice[0].item.doubleValue, green: slice[1].item.doubleValue, blue: slice[2].item.doubleValue, alpha: slice[3].item.doubleValue)
                 } else {
-                    fatalError("Unsupported format. Tensor must have shape [height, width], [1, height, width], [3, height, width] or [4, height, width]")
+                    return nil
                 }
                 self.set(pixel: Point(x: x, y: y), to: color)
             }
@@ -78,7 +89,7 @@ extension Image {
     }
 }
 
-public enum TensorFlowDataTypeWrapper {
+public enum TensorFlowDataTypeWrapper: Sendable {
     case float, double, int32
     
     var dtype: Tensorflow_DataType {
@@ -93,7 +104,7 @@ public enum TensorFlowDataTypeWrapper {
     }
 }
 
-public struct TensorProtoWrapper {
+public struct TensorProtoWrapper: Sendable {
     var tensor: Tensorflow_TensorProto
 }
 
@@ -107,7 +118,7 @@ extension Float: TensorFlowProtoScalar {
         return .float
     }
     
-    public static func populate<Device>(tensorProto: inout TensorProtoWrapper, with tensor: Tensor<Float, Device>) where Device : DeviceType {
+    public static func populate<Device>(tensorProto: inout TensorProtoWrapper, with tensor: Tensor<Float, Device>) where Device: DeviceType {
         tensorProto.tensor.floatVal = tensor.elements
     }
 }
@@ -117,7 +128,7 @@ extension Double: TensorFlowProtoScalar {
         return .double
     }
     
-    public static func populate<Device>(tensorProto: inout TensorProtoWrapper, with tensor: Tensor<Double, Device>) where Device : DeviceType {
+    public static func populate<Device>(tensorProto: inout TensorProtoWrapper, with tensor: Tensor<Double, Device>) where Device: DeviceType {
         tensorProto.tensor.doubleVal = tensor.elements
     }
 }
@@ -127,7 +138,7 @@ extension Int32: TensorFlowProtoScalar {
         return .int32
     }
     
-    public static func populate<Device>(tensorProto: inout TensorProtoWrapper, with tensor: Tensor<Int32, Device>) where Device : DeviceType {
+    public static func populate<Device>(tensorProto: inout TensorProtoWrapper, with tensor: Tensor<Int32, Device>) where Device: DeviceType {
         tensorProto.tensor.intVal = tensor.elements
     }
 }
