@@ -1,13 +1,13 @@
 {
-  "originHash" : "bad789db516761db56d552384e6ac3931bb7c8f9d680eeb978cb011715b19bed",
+  "originHash" : "37b39877bdb59cfc295a0b1ef7d650b70cae56da5dc0041dbf2758a916db42f1",
   "pins" : [
     {
       "identity" : "dl4s",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/palle-k/DL4S.git",
       "state" : {
-        "branch" : "master",
-        "revision" : "7bbc580811788119d3041c6e96e88a1fe1ae97fe"
+        "branch" : "feat/fused-engine",
+        "revision" : "d73636375c9e2e1a10e4fa311da308a66b3d17da"
       }
     },
     {

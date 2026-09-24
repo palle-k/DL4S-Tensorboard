@@ -11,7 +11,7 @@ let package = Package(
         .library(name: "DL4STensorboard", targets: ["DL4STensorboard"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/palle-k/DL4S.git", branch: "master"),
+        .package(url: "https://github.com/palle-k/DL4S.git", branch: "feat/fused-engine"),
         .package(url: "https://github.com/apple/swift-protobuf.git", from: "1.38.0"),
         .package(url: "https://github.com/twostraws/SwiftGD", from: "2.6.0"),
     ],
